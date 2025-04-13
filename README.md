@@ -1,232 +1,271 @@
-# MCP Neo4j Server with Cursor Interface
+# Model Context Protocol (MCP) for Cursor AI and Neo4j
 
-A Python implementation of a Model-Controller-Processor (MCP) server that connects Neo4j with cursor-based pagination support.
+This library implements the Model Context Protocol (MCP) to connect Cursor AI with Neo4j graph databases. It provides a standardized interface for Cursor AI to interact with Neo4j, enabling AI-assisted graph database operations.
 
 ## Overview
 
-This repository contains both server and client components:
+The implementation consists of two main components:
 
-- **MCP Server**: A Flask-based REST API that provides a standardized interface to Neo4j
-- **Cursor Client**: A Python client library that applications can use to interact with the MCP server
+1. **MCPNeo4jConnector**: A low-level connector that implements the Model Context Protocol specification for Neo4j.
 
-The MCP architecture separates concerns into three layers:
-
-1. **Model** - Handles all Neo4j database interactions
-2. **Controller** - Manages API endpoints and request/response handling
-3. **Processor** - Contains business logic and data validation
+2. **CursorAINeo4jConnector**: A higher-level connector specifically designed for Cursor AI integration, providing simplified methods for common operations.
 
 ## Features
 
-- Complete CRUD operations for Neo4j nodes and relationships
-- Cursor-based pagination for efficient data retrieval
-- Custom query execution with parameter binding
-- Robust error handling and validation
-- Pythonic client interface with mapping and filtering capabilities
+- Execute Cypher queries against Neo4j databases
+- Retrieve database schema information (node labels, relationship types, properties)
+- Support for transactions (begin, commit, rollback)
+- Proper handling of Neo4j-specific data types
+- Error handling with descriptive messages
+- Compatible with the Cursor AI interface
 
 ## Installation
 
 ### Prerequisites
 
-- Python 3.7 or higher
-- Neo4j database (local or cloud instance)
+- Python 3.7+
+- Neo4j database (4.0+)
+- Cursor AI environment
 
-### Server Setup
+### Installation Steps
 
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/braincomputingsantosh/mcp_neo4j_cursor.git
-   cd mcp-neo4j-python
-   ```
+1. Install required dependencies:
 
-2. Create and activate a virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
+```bash
+pip install neo4j python-dotenv
+```
 
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+2. Create a `.env` file with your Neo4j credentials:
 
-4. Create a `.env` file with your Neo4j configuration:
-   ```
-   NEO4J_URI=bolt://localhost:7687
-   NEO4J_USER=neo4j
-   NEO4J_PASSWORD=your_password
-   PORT=5000
-   ```
+```
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=your_password
+```
 
-5. Start the server:
-   ```bash
-   python app.py
-   ```
-   
-   For production, use Gunicorn or a similar WSGI server:
-   ```bash
-   gunicorn app:app
-   ```
+3. Download or copy the `mcp_cursor_neo4j.py` file to your project.
 
-### Client Setup
-
-The client library is included in the `cursor_client.py` file. You can either:
-
-1. Copy this file to your project, or
-2. Install this project as a package:
-   ```bash
-   pip install -e /path/to/mcp-neo4j-python
-   ```
-
-## Usage
-
-### Server API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check endpoint |
-| `/api/query` | POST | Execute custom Cypher query |
-| `/api/<label>/<id>` | GET | Get a node by label and ID |
-| `/api/<label>` | POST | Create a new node |
-| `/api/<label>/<id>` | PUT | Update a node |
-| `/api/<label>/<id>` | DELETE | Delete a node |
-| `/api/relationship` | POST | Create a relationship between nodes |
-| `/api/cursor/query` | POST | Execute query with pagination |
-
-### Client Examples
-
-#### Basic CRUD Operations
+## Basic Usage
 
 ```python
-from cursor_client import Neo4jCursorClient
+from mcp_cursor_neo4j import CursorAINeo4jConnector
 
-# Initialize client
-client = Neo4jCursorClient("http://localhost:5000/api")
+# Connect to Neo4j (uses .env file by default)
+cursor = CursorAINeo4jConnector()
 
-# Create a node
-person = client.create_node("Person", {
-    "id": "123",
-    "name": "John Doe",
-    "age": 30
-})
+# Execute a Cypher query
+results = cursor.execute("MATCH (n:Person) RETURN n.name AS name, n.age AS age")
 
-# Get a node
-retrieved = client.get_node("Person", "123")
+# Print results
+for row in results:
+    print(f"Name: {row['name']}, Age: {row['age']}")
 
-# Update a node
-updated = client.update_node("Person", "123", {
-    "age": 31,
-    "occupation": "Developer"
-})
+# Close connection when done
+cursor.close()
+```
 
-# Delete a node
-client.delete_node("Person", "123")
+## Connecting to Neo4j
 
-# Create a relationship
-client.create_relationship(
-    "Person", "123",
-    "Company", "456",
-    "WORKS_FOR",
-    {"since": 2020}
+You can connect to Neo4j using environment variables or by explicitly providing connection details:
+
+```python
+# Using environment variables (.env file)
+cursor = CursorAINeo4jConnector()
+
+# Explicitly providing connection details
+cursor = CursorAINeo4jConnector(
+    uri="bolt://localhost:7687",
+    username="neo4j",
+    password="your_password"
 )
 ```
 
-#### Using the Cursor
+## Querying Neo4j
+
+### Basic Queries
 
 ```python
-# Create a cursor for paginated query results
-person_cursor = client.cursor(
-    "MATCH (p:Person) WHERE p.age > $min_age RETURN p",
-    {"min_age": 25},
-    10  # page size
-)
+# Simple query
+results = cursor.execute("MATCH (n) RETURN n LIMIT 10")
 
-# Get the next page
-result = person_cursor.next()
-if not result["done"]:
-    people = result["value"]
-    # Process this page of people...
-
-# Get all results
-all_people = person_cursor.all()
-
-# Map results to names
-names = person_cursor.map(lambda person: person["p"]["name"])
-
-# Filter results
-adults = person_cursor.filter(lambda person: person["p"]["age"] >= 18)
-
-# Iterate through results
-for person in person_cursor:
-    print(f"Person: {person['p']['name']}")
-```
-
-#### Custom Queries
-
-```python
-# Execute a custom Cypher query
-results = client.execute_query(
-    "MATCH (p:Person)-[:WORKS_FOR]->(c:Company) RETURN p, c",
-    {}
+# Query with parameters
+results = cursor.execute(
+    "MATCH (p:Person) WHERE p.age > $min_age RETURN p.name AS name",
+    {"min_age": 30}
 )
 ```
 
-## Project Structure
+### Working with Results
 
-```
-mcp-neo4j-python/
-├── app.py              # Main Flask application with MCP implementation
-├── cursor_client.py    # Client for interacting with the MCP server
-├── requirements.txt    # Project dependencies
-├── README.md           # This documentation
-└── .env                # Environment variables (gitignored)
-```
-
-## Extending the Server
-
-### Adding Custom Validations
-
-Edit the `Processor` class in `app.py`:
+Results are returned as a list of dictionaries:
 
 ```python
-class Processor:
-    @staticmethod
-    def validate_node_data(label, data):
-        # Add custom validation for your node types
-        if label == "CustomNode":
-            # Implement your validation logic
-            pass
-        return {"valid": True}
+results = cursor.execute("MATCH (n:Movie) RETURN n.title AS title, n.year AS year")
+for movie in results:
+    print(f"{movie['title']} ({movie['year']})")
 ```
 
-### Adding New Endpoints
+### Working with Neo4j Nodes and Relationships
 
-Add new routes to `app.py`:
+The results preserve Neo4j-specific data structures:
 
 ```python
-@app.route("/api/custom-endpoint", methods=["GET"])
-def custom_endpoint():
-    # Implementation
-    return jsonify({"result": "success"})
+results = cursor.execute("MATCH (p:Person)-[r:ACTED_IN]->(m:Movie) RETURN p, r, m LIMIT 1")
+
+for row in results:
+    person = row['p']
+    relationship = row['r']
+    movie = row['m']
+    
+    print(f"Actor: {person['properties']['name']}")
+    print(f"Role: {relationship['properties'].get('role', 'Unknown')}")
+    print(f"Movie: {movie['properties']['title']}")
 ```
 
-## Security Considerations
+## Transactions
 
-- Add authentication to protect your API (JWT recommended)
-- Use HTTPS in production
-- Implement rate limiting for public-facing APIs
-- Validate all inputs to prevent Cypher injection attacks
+For multiple write operations, use transactions to ensure data consistency:
 
-## Performance Tips
+```python
+# Begin a transaction
+cursor.begin()
 
-- Use cursor-based pagination for large datasets
-- Consider adding caching for frequently accessed data
-- Use connection pooling in production environments
-- Index properties in Neo4j that are frequently queried
+try:
+    # Execute multiple operations
+    cursor.execute_in_transaction(
+        "CREATE (p:Person {name: $name, age: $age})",
+        {"name": "John Doe", "age": 30}
+    )
+    
+    cursor.execute_in_transaction(
+        "CREATE (m:Movie {title: $title, year: $year})",
+        {"title": "Example Movie", "year": 2023}
+    )
+    
+    cursor.execute_in_transaction(
+        "MATCH (p:Person {name: $person_name}), (m:Movie {title: $movie_title}) "
+        "CREATE (p)-[:ACTED_IN {role: $role}]->(m)",
+        {
+            "person_name": "John Doe",
+            "movie_title": "Example Movie",
+            "role": "Main Character"
+        }
+    )
+    
+    # Commit the transaction
+    cursor.commit()
+    
+except Exception as e:
+    # Rollback on error
+    cursor.rollback()
+    print(f"Transaction failed: {str(e)}")
+```
+
+## Schema Information
+
+Retrieve information about the database schema:
+
+```python
+# Get all node labels
+labels = cursor.get_node_labels()
+
+# Get all relationship types
+relationship_types = cursor.get_relationship_types()
+
+# Get properties for a specific node label
+person_properties = cursor.get_node_properties("Person")
+print(f"Person properties: {person_properties}")
+
+# Get properties for a specific relationship type
+acted_in_properties = cursor.get_relationship_properties("ACTED_IN")
+print(f"ACTED_IN properties: {acted_in_properties}")
+
+# Get connected node labels for a relationship type
+from_labels, to_labels = cursor.get_connected_labels("ACTED_IN")
+print(f"ACTED_IN connects: {from_labels} → {to_labels}")
+```
+
+## Database Information
+
+Get information about the connected Neo4j database:
+
+```python
+db_info = cursor.get_database_info()
+print(f"Neo4j version: {db_info['info']['version']}")
+print(f"Edition: {db_info['info']['edition']}")
+```
+
+## Advanced Usage: Direct MCP Access
+
+For advanced use cases, you can access the underlying MCP connector directly:
+
+```python
+# Access the underlying MCP connector
+mcp = cursor.mcp
+
+# Use MCP protocol methods directly
+info = mcp.info()
+schema = mcp.get_schema()
+query_result = mcp.query("MATCH (n) RETURN count(n) AS node_count")
+
+print(f"Node count: {query_result['rows'][0]['node_count']}")
+```
+
+## Error Handling
+
+The connector provides meaningful error messages:
+
+```python
+try:
+    # Attempt an invalid query
+    cursor.execute("MATCH (n:NonExistentLabel) WHERE n.missing > 10 RETURN n")
+except Exception as e:
+    print(f"Query error: {str(e)}")
+```
+
+## Integration with Cursor AI
+
+This connector is designed to be used with Cursor AI for advanced graph database interactions:
+
+```python
+# Example of how Cursor AI might use this connector
+def analyze_graph_with_cursor_ai(query):
+    # Connect to Neo4j
+    connector = CursorAINeo4jConnector()
+    
+    try:
+        # Execute the query
+        results = connector.execute(query)
+        
+        # Process results with Cursor AI
+        # (Cursor AI integration code would go here)
+        
+        return results
+    finally:
+        connector.close()
+```
+
+## Environment File Example
+
+Create a `.env` file with the following content:
+
+```
+# Neo4j Connection
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=your_secure_password
+
+# Optional Configuration
+# CURSOR_AI_API_KEY=your_cursor_ai_api_key
+# NEO4J_DATABASE=neo4j
+```
+
+## Limitations
+
+- This implementation doesn't support Neo4j's subscription-based (reactive) queries
+- Database multi-tenancy is not fully implemented
+- Some advanced Neo4j features may not be fully exposed through the MCP interface
 
 ## License
 
-[MIT License](LICENSE)
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+MIT License
